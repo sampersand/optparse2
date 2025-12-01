@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require 'optparse'
+class OptParse2 < OptParse; end
 require_relative "optparse2/version"
 
-class OptParse2 < OptParse
+class OptParse2
   # Provide support for passing keyword arguments into `make_switch`
   def define(*opts, **, &block) top.append(*(sw = make_switch(opts, block, **))); sw[0] end
   alias def_option define
@@ -42,3 +44,37 @@ class OptParse2 < OptParse
 
   # def positional
 end
+
+__END__
+OptParse2.new nil, 20 do |op|
+  # op.program_name = PROGRAM_NAME
+  # op.banner = "usage: #{op.program_name} [options] [file] [start[-end]]"
+
+  op.summary <<~USAGE
+    Print the link to a repository, a file in the repo, or a range within it.
+  USAGE
+
+  op.on '-r', '--repo=REPO', 'Use REPO; if not specified, uses REPO containing FILE. If no FILE, uses PWD.' do |repo|
+    $repo = repo
+  end
+
+
+  op.on '-b', '--branch=NAME', 'Explicitly use branch NAME', key: :branch
+  op.on '-c', '--current', 'Use the current branch',         key: :branch do :current end
+  op.on '-m', '--master', 'Use the master branch [default]', key: :branch do :master end
+  op.on '-p', '--permalink', 'Use a permalink',              key: :branch do :permalink end
+  op.on '--debug', hidden: true do $DEBUG = 1 end
+
+  op.on '-f', default: 'lol'
+
+  begin
+    op.parse!
+  rescue OptionParser::InvalidOption => err
+    abort err
+  end
+
+  unless $*.length <= 2
+    abort op.help
+  end
+end.parse! %w[--debug -hm -- -bq -c -m], into: q={}
+p q
