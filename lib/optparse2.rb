@@ -1,21 +1,21 @@
 # frozen_string_literal: true
 
 require 'optparse'
-class OptParse2 < OptParse; end
+class OptParse2 < OptParse; end # Make sure it's a subclass
+OptionParser2 = OptParse2 # Alias
+
 require_relative "optparse2/version"
 
 class OptParse2
-  # Provide support for passing keyword arguments into `make_switch`
+  # Provide support for passing keyword arguments into `make_switch`, until https://github.com/ruby/optparse/pull/121 is merged
   def define(*opts, **, &block) top.append(*(sw = make_switch(opts, block, **))); sw[0] end
-  alias def_option define
-  def on(...) define(...); self end
-
   def define_head(*opts, **, &block) top.prepend(*(sw = make_switch(opts, block, **))); sw[0] end
-  alias def_head_option define_head
-  def on_head(...) define_head(...); self end
-
   def define_head(*opts, **, &block) base.append(*(sw = make_switch(opts, block, **))); sw[0] end
+  alias def_option define
+  alias def_head_option define_head
   alias def_tail_option define_tail
+  def on(...) define(...); self end
+  def on_head(...) define_head(...); self end
   def on_tail(...) define_tail(...); self end
 
   # Update `make_switch` to support OptParse2's keyword arguments
@@ -32,49 +32,4 @@ class OptParse2
   def summary(msg)
     on_tail("\n" + msg)
   end
-
-  # def env(var, *opts, hidden: false, &)
-  #   fail if hidden
-  #   sw, = make_switch(['-_X', *opts])
-
-  #   p sw
-  #   exit
-  #   on_tail(var)
-  # end
-
-  # def positional
 end
-
-__END__
-OptParse2.new nil, 20 do |op|
-  # op.program_name = PROGRAM_NAME
-  # op.banner = "usage: #{op.program_name} [options] [file] [start[-end]]"
-
-  op.summary <<~USAGE
-    Print the link to a repository, a file in the repo, or a range within it.
-  USAGE
-
-  op.on '-r', '--repo=REPO', 'Use REPO; if not specified, uses REPO containing FILE. If no FILE, uses PWD.' do |repo|
-    $repo = repo
-  end
-
-
-  op.on '-b', '--branch=NAME', 'Explicitly use branch NAME', key: :branch
-  op.on '-c', '--current', 'Use the current branch',         key: :branch do :current end
-  op.on '-m', '--master', 'Use the master branch [default]', key: :branch do :master end
-  op.on '-p', '--permalink', 'Use a permalink',              key: :branch do :permalink end
-  op.on '--debug', hidden: true do $DEBUG = 1 end
-
-  op.on '-f', default: 'lol'
-
-  begin
-    op.parse!
-  rescue OptionParser::InvalidOption => err
-    abort err
-  end
-
-  unless $*.length <= 2
-    abort op.help
-  end
-end.parse! %w[--debug -hm -- -bq -c -m], into: q={}
-p q
