@@ -1,5 +1,24 @@
 # OptParse2
 
+example:
+
+```ruby
+OptParse2.new do |op|
+  op.on('-d', '--debug', hidden: true) do |dbg|
+    puts "debug = #{dbg}"
+  end
+
+  op.on('-b', '--branch=STRING')
+  op.on('-m', '--master', key: :branch) { :master }
+
+  puts op.help
+  op.parse! %w[-d --branch=foo --master], into: h={}
+  p h
+end
+```
+
+
+
 TODO: Delete this and the text below, and describe your gem
 
 Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/optparse2`. To experiment with that code, run `bin/console` for an interactive prompt.

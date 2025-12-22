@@ -10,7 +10,7 @@ require_relative "optparse2/fixes"
 
 class OptParse2
   def initialize(...)
-    @defaults = {}
+    @defaults = Set[]
     super
   end
 
@@ -59,6 +59,7 @@ class OptParse2
       raise ArgumentError, "default: not supplied, but default_description: given"
     elsif not nodefault
       sw.set_default(default, default_description)
+      @defaults << sw
     end
 
     [sw, *rest]
@@ -83,9 +84,10 @@ class OptParse2
 
     result = super(argv, into: already_done, **keywords, &nonopt)
 
-    @defaults.each do |key, value|
+    @defaults.each do |sw|
+      key = sw.switch_name
       next if already_done.key? key
-      into[key] = value.()
+      into[key] = sw.default()
     end
 
     result
