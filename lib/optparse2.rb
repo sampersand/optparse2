@@ -6,11 +6,11 @@ OptionParser2 = OptParse2 # Alias
 
 require_relative "optparse2/version"
 require_relative "optparse2/fixes"
-# require_relative "optparse2/helpers"
 
 class OptParse2
   def initialize(...)
     @defaults = Set[]
+    @positionals = []
     super
   end
 
@@ -35,13 +35,14 @@ class OptParse2
       @default_description = description
     end
 
-    def default = @default.call(switch_name)
+    def default = @default&.call(switch_name)
     def default_description = @default_description || default.inspect
     def desc
-      return super unless defined? @default
+      return super unless @default && default_description
       x = super
       x << '' if x.empty?
-      x.last << " [default: #{default_description}]"
+      (x[-1] = +x[-1]) << " [default: #{default_description}]"
+      def self.default_description = nil
       x
     end
   end
@@ -82,7 +83,30 @@ class OptParse2
       into[key] = value
     end
 
-    result = super(argv, into: already_done, **keywords, &nonopt)
+    retrieved_args = []
+    result = super(argv, into: already_done, **keywords, &retrieved_args.method(:<<))
+
+    @positionals.each do |x|
+      x => {name:, sw:, required:}
+      break
+      if retrieved_args.empty?
+        if required
+          raise ParseError, "missing required argument: #{name}"
+        end
+
+        next
+      end
+
+      value = retrieved_args.shift
+      value = block.call value if block
+      already_done[key] = value
+    end
+
+    retrieved_args.each do |arg|
+      nonopt.call arg
+    end
+
+    # p argv
 
     @defaults.each do |sw|
       key = sw.switch_name
@@ -92,4 +116,60 @@ class OptParse2
 
     result
   end
+
+  # For now, only supports strings for description, unlike other things which also support class and whatnot.
+  def positional(name, *description, key: name, required: true, &block)
+    # on sprintf "%s%-*s %s", summary_indent, summary_width, (x = required ? name : "[#{name}]"), description.shift
+    # banner.concat " #{x}"
+    # description.each do |descr|
+    #   on "#{summary_indent}#{' ' * summary_width} #{descr}"
+    # end
+
+    sw, * = make_switch(['-_'] + description, block)
+    sw.instance_variable_set(:@short, ["[#{name}]"])
+    p sw.switch_name
+    # sw.insshort = [ "[file]" ]
+    top.append(sw, [], [], nil, [])
+    @positionals << { name:, required:, sw: }
+  end
 end
+
+require 'optparse/date'
+OptParse2.new do |op|
+  op.program_name.sub! '-', ' '
+  op.banner = "usage: #{op.program_name} [options] [--] [branch name to be joined by hyphens]"
+
+  DEFAULT_PREFIX = ENV['SampShell_git_branch_prefix'] || ENV.fetch('LOGNAME')
+  # DEFAULT_PREFIX = ENV.fetch('SampShell_git_branch_prefix')
+  #   op.env('SampShell_git_branch_prefix', 'Default prefix for -p',
+  #          unset: :empty, default: proc{ ENV.fetch('LOGNAME') })
+
+  DEFAULT_SEP = ENV['SampShell_git_separator'] || '/'
+
+  # DEFAULT_SEP =
+  #   op.env('SampShell_git_separator', 'Default separator', default: '/')
+
+  op.on '-d', '--date=DATE', Date, 'Set the date',
+    default: proc{ Date.today }, default_description: 'today'
+
+  op.on '-p', '--prefix=PREFIX', 'Set branch prefix',
+    default: DEFAULT_PREFIX, default_description: 'current user'
+
+  op.on '-s', '--sep=SEP', 'Sets the separator',
+    default: DEFAULT_SEP
+
+  op.positional 'file', Integer, 'File to use', 'isnt it cool', required: true do |x|
+    x
+  end
+
+  # op.positional 1.., 'Branch name (to be joined by `-`)' do |args|
+  #   args.join('-')
+  # end
+  op.summary_width = 100
+
+  op.parse! into: x={}#OptParse2::Globals
+  p x
+  puts op.help
+end
+BEGIN{ $* << '-file' << '123' }
+
