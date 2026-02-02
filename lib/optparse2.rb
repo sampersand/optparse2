@@ -22,14 +22,8 @@ class OptParse2
 
     def switch_name=(val)
       if @block.nil? && @arg.nil?
-        # if @arg.nil?
-        #   @block = switch_name.to_sym
-        # end
-        @block ||= switch_name.to_sym
-        #   name =
-        #   binding.irb
-        #   proc { |*x| p x; name}
-        # )
+        q = switch_name.to_sym
+        @block = proc { q }
       end
       # binding.irb
       @switch_name = val
