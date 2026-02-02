@@ -23,7 +23,6 @@ class OptParse2
     attr_writer :switch_name
     def switch_name; defined?(@switch_name) ? @switch_name : super end
 
-
     # requires `switch_name`, `desc` to work
     def set_default(value, description)
       if defined? value.call
@@ -41,7 +40,7 @@ class OptParse2
       return super unless defined? @default
       x = super
       x << '' if x.empty?
-      x.last << " [default: #{default_description}]"
+      x[-1] += " [default: #{default_description}]"
       x
     end
   end
