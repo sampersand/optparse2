@@ -20,7 +20,21 @@ class OptParse2
       def self.summarize(*) end
     end
 
-    attr_writer :switch_name
+    def switch_name=(val)
+      if @block.nil? && @arg.nil?
+        # if @arg.nil?
+        #   @block = switch_name.to_sym
+        # end
+        @block ||= switch_name.to_sym
+        #   name =
+        #   binding.irb
+        #   proc { |*x| p x; name}
+        # )
+      end
+      # binding.irb
+      @switch_name = val
+    end
+    # attr_writer :switch_name
     def switch_name; defined?(@switch_name) ? @switch_name : super end
 
     # requires `switch_name`, `desc` to work
