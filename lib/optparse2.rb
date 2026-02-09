@@ -111,19 +111,3 @@ class OptParse2
     result
   end
 end
-
-
-require_relative 'optparse2/pathname'
-require_relative 'optparse2/globals'
-$* << '-tFOO' << '--no-cache'<< '-x'
-OPTS={}
-OptParse2.new do |op|
-  op.on '--[no-]cache-file=PATH', Pathname, key: :foo, hidden: true
-  op.on '-x', '--lol', key: :a123
-  op.on '--period=PERIOD', Integer
-  op.on '-t', '--ticker=TICKER', &:upcase
-
-  op.parse! into: OPTS
-  p OPTS
-  # op.abort 'a ticker must be supplied' unless OPTS[:ticker]
-end
