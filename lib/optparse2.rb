@@ -103,11 +103,27 @@ class OptParse2
     result = super(argv, into: already_done, **keywords, &nonopt)
 
     @defaults.each do |sw|
-      key = sw.switch_name
+      key = sw.switch_name.to_sym
       next if already_done.key? key
       into[key] = sw.default()
     end
 
     result
   end
+end
+
+
+require_relative 'optparse2/pathname'
+require_relative 'optparse2/globals'
+$* << '-tFOO' << '--no-cache' << '-x'
+OPTS={}
+OptParse2.new do |op|
+  op.on '--[no-]cache-file=PATH', Pathname, default: :LOL
+  op.on '-x', '--lol', key: :a123
+  op.on '--period=PERIOD', Integer
+  op.on '-t', '--ticker=TICKER', &:upcase
+
+  op.parse! into: OPTS
+  p OPTS
+  # op.abort 'a ticker must be supplied' unless OPTS[:ticker]
 end
