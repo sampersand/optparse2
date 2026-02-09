@@ -21,13 +21,17 @@ class OptParse2
     end
 
     def switch_name=(val)
-      if @block.nil? && @arg.nil?
-        q = switch_name.to_sym
-        @block = proc { q }
-      end
       # binding.irb
       @switch_name = val
     end
+
+    def set_block_name_because_of_switch_name
+      if @block.nil? && @arg.nil?
+        q = @switch_name.to_sym
+        @block = proc { q }
+      end
+    end
+
     # attr_writer :switch_name
     def switch_name; defined?(@switch_name) ? @switch_name : super end
 
@@ -58,9 +62,17 @@ class OptParse2
     sw, *rest = super(opts, block)
 
     sw.extend Helpers
-
-    sw.switch_name = key if key
+    if key
+      sw.switch_name = key
+      sw.set_block_name_because_of_switch_name
+    end
     sw.set_hidden if hidden
+
+    if (not_style = rest[2])
+      not_style.extend Helpers
+      not_style.switch_name = key if key
+      not_style.set_hidden if hidden
+    end
 
     if nodefault && default_description != nil
       raise ArgumentError, "default: not supplied, but default_description: given"
@@ -84,7 +96,6 @@ class OptParse2
 
     already_done = {}
     already_done.define_singleton_method(:[]=) do |key, value|
-      key = key.to_s
       super(key, value)
       into[key] = value
     end
@@ -99,4 +110,20 @@ class OptParse2
 
     result
   end
+end
+
+
+require_relative 'optparse2/pathname'
+require_relative 'optparse2/globals'
+$* << '-tFOO' << '--no-cache'<< '-x'
+OPTS={}
+OptParse2.new do |op|
+  op.on '--[no-]cache-file=PATH', Pathname, key: :foo, hidden: true
+  op.on '-x', '--lol', key: :a123
+  op.on '--period=PERIOD', Integer
+  op.on '-t', '--ticker=TICKER', &:upcase
+
+  op.parse! into: OPTS
+  p OPTS
+  # op.abort 'a ticker must be supplied' unless OPTS[:ticker]
 end
