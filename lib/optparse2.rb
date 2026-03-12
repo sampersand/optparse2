@@ -9,8 +9,15 @@ require_relative "optparse2/fixes"
 # require_relative "optparse2/helpers"
 
 class OptParse2
+  class << self
+    attr_accessor :pos_set_banner
+  end
+  self.pos_set_banner = true
+
   def initialize(...)
     @defaults = Set[]
+    @positional = []
+    self.pos_set_banner = OptParse2.pos_set_banner
     super
   end
 
@@ -110,4 +117,70 @@ class OptParse2
 
     result
   end
+
+  module Positional
+    attr_accessor :name
+
+    # Essentially directly copied from `OptParse::Switch`.summarize, except with custom `left`
+    def summarize(sdone = {}, ldone = {}, width = 1, max = width - 1, indent = "")
+      left = ["#{name}"]
+      sdone[name] = true
+      ldone[name] = true
+      right = desc.dup
+
+      mlen = left.collect {|ss| ss.length}.max.to_i
+      while mlen > width and l = left.shift
+        mlen = left.collect {|ss| ss.length}.max.to_i if l.length == mlen
+        if l.length < width and (r = right[0]) and !r.empty?
+          l = l.to_s.ljust(width) + ' ' + r
+          right.shift
+        end
+        yield(indent + l)
+      end
+
+      while begin l = left.shift; r = right.shift; l or r end
+        l = l.to_s.ljust(width) + ' ' + r if r and !r.empty?
+        yield(indent + l)
+      end
+
+      self
+    end
+  end
+
+  attr_accessor :pos_set_banner
+  def pos(name, *a, optional: false, key: name, **b, &block)
+    banner.concat " #{'[' if optional}#{name}#{']' if optional}" if pos_set_banner
+
+    sw, *_always_empty = make_switch ["--__positional_#{@positional.length}__ #{name}", *a], block, **b
+    sw.extend Positional
+    sw.name = name
+    sw.switch_name = key
+    top.append sw, [], ["--#{name}"], []
+  end
+end
+
+return unless $0 == __FILE__
+require_relative 'optparse2/pathname'
+
+# $* << '-tFOO' << '--no-cache' << '-x'
+$* << '-h'
+
+OPTS={}
+OptParse2.new do |op|
+  op.on '-t', '--timeout=FOO', Array
+  op.pos 'file', Integer, 'sets the file name', 'is also pretty cool', 1..10 do end
+  op.pos 'start[-end]', 'things to do', key: 'line', optional: true
+  puts op
+  exit
+  # op.on '-t', '--[no-]timeout[=f]', Array, default: false
+  # p op.make_switch
+  # op.rest 'bar'
+  # op.on '--[no-]cache-file=PATH', Pathname, default: :LOL
+  # op.on '-x', '--lol', key: :a123
+  # op.on '--period=PERIOD', Integer
+  # op.on '-t', '--ticker=TICKER', &:upcase
+
+  op.parse! into: OPTS
+  p OPTS
+  # op.abort 'a ticker must be supplied' unless OPTS[:ticker]
 end
