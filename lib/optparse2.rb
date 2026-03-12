@@ -140,7 +140,7 @@ class OptParse2
         raise ParseError, "at least #{@rest[:required]} trailing arguments required (only got #{argv2.length})", caller(1)
       end
 
-      argv2 = @rest[:block].call(argv2)
+      argv2 = @rest[:block] ? @rest[:block].call(argv2) : argv2
       into[@rest[:key]] = argv2 if @rest[:key]
     elsif !argv2.empty? && self.raise_unknown && !@positional.empty?
       raise ParseError, "got unexpected positional argument: #{argv2.first}", caller(1)
