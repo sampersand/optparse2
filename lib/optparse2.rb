@@ -138,8 +138,8 @@ class OptParse2
     if @rest
       argv2 = @rest[:block].call(argv2)
       into[@rest[:key]] = argv2 if @rest[:key]
-    elsif !argv.empty? && self.raise_unknown && !@positional.empty?
-      raise ParseError, "got unexpected positional argument: #{argv2.inspect}"
+    elsif !argv2.empty? && self.raise_unknown && !@positional.empty?
+      raise ParseError, "got unexpected positional argument: #{argv2.first}", caller(1)
     else
       argv2.each(&nonopt)
     end
@@ -232,7 +232,7 @@ require_relative 'optparse2/pathname'
 
 # $* << '-tFOO' << '--no-cache' << '-x'
 # $*.replace %w[123 lol what -t10 is up here]
-$*.replace %w[--timeout=a a]
+$*.replace %w[1 -t3 b c ]
 
 OPTS={}
 OptParse2.new do |op|
