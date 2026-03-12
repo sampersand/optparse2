@@ -17,7 +17,7 @@ class OptParse2
   def initialize(...)
     @defaults = Set[]
     @positional = []
-    @required = []
+    @required = Set[]
     @rest = nil
     self.pos_set_banner = OptParse2.pos_set_banner
     super
@@ -146,7 +146,7 @@ class OptParse2
     end
 
     @required.each do |key|
-      raise ParseError, "required option '#{key}' not provided" unless already_done.key? key
+      raise ParseError, "required option '#{key}' not provided" unless already_done.key? key.to_sym
     end
 
     argv2
