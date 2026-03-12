@@ -17,6 +17,8 @@ class OptParse2
   def initialize(...)
     @defaults = Set[]
     @positional = []
+    @required = []
+    @rest = nil
     self.pos_set_banner = OptParse2.pos_set_banner
     super
   end
@@ -65,7 +67,8 @@ class OptParse2
   end
 
   # Update `make_switch` to support OptParse2's keyword arguments
-  def make_switch(opts, block, hidden: false, key: nil, default: nodefault=true, default_description: nil)
+  def make_switch(opts, block, hidden: false, key: nil, default: nodefault=true, default_description: nil,
+    required: false)
     sw, *rest = super(opts, block)
 
     sw.extend Helpers
@@ -79,6 +82,13 @@ class OptParse2
       not_style.extend Helpers
       not_style.switch_name = key if key
       not_style.set_hidden if hidden
+    end
+
+    if required
+      unless nodefault
+        raise ArgumentError, "cannot supply both a default with required: true"
+      end
+      @required << sw.switch_name
     end
 
     if nodefault && default_description != nil
@@ -107,7 +117,27 @@ class OptParse2
       into[key] = value
     end
 
-    result = super(argv, into: already_done, **keywords, &nonopt)
+    non_options = []
+
+    result = super(argv, into: already_done, **keywords, &non_options.method(:<<))
+
+    argv2 = non_options.each_with_index.flat_map { ["--*-positional-#{_2}", _1] }
+
+    old_raise, self.raise_unknown = self.raise_unknown, false
+    begin
+      super(argv2, into: already_done, **keywords)
+    rescue
+      self.raise_unknown = old_raise
+    end
+
+    argv2 = argv2.each_slice(2).map { _2 }
+
+    if @rest
+      argv2 = @rest[:block].call(argv2)
+      into[@rest[:key]] = argv2 if @rest[:key]
+    else
+      argv2.each(&nonopt)
+    end
 
     @defaults.each do |sw|
       key = sw.switch_name.to_sym
@@ -115,7 +145,11 @@ class OptParse2
       into[key] = sw.default()
     end
 
-    result
+    @required.each do |key|
+      raise ParseError, "required option '#{key}' not provided" unless already_done.key? key
+    end
+
+    argv2
   end
 
   module Positional
@@ -145,42 +179,64 @@ class OptParse2
 
       self
     end
+
+    # def match_nonswitch?(arg)
+    #   p ["switch is: #{arg}"]
+
+
+    #   begin
+    #     opt, cb, val = parse(arg, []) {|*exc| raise(*exc)}
+    #     val = $op.send :callback!, cb, 1, val if cb
+    #     $op.send :callback!, $setter, 2, switch_name, val if $setter
+    #   rescue OptParse::ParseError
+    #     raise $!.set_option(arg, rest)
+    #   end
+    #   p "ok!"
+    #   throw :prune
+
+    #   # p arg
+    # end
+
+    # def parse(*argv, **keywords)
+    #   p argv, keywords
+    #   # p [argv, keywords]
+    #   # exit 1
+    # end
   end
 
   attr_accessor :pos_set_banner
-  def pos(name, *a, optional: false, key: name, **b, &block)
-    banner.concat " #{'[' if optional}#{name}#{']' if optional}" if pos_set_banner
+  def pos(name, *a, key: name, **b, &block)
+    banner.concat " #{name}" if pos_set_banner
 
-    sw, *_always_empty = make_switch ["--__positional_#{@positional.length}__ #{name}", *a], block, **b
+    sw, *rest = make_switch ["--*-positional-#{@positional.length} #{name}", *a], block, key:, **b
     sw.extend Positional
     sw.name = name
     sw.switch_name = key
-    top.append sw, [], ["--#{name}"], []
+    top.append(sw, *rest)
+    @positional.append sw
+  end
+
+  def rest(name, description, &block)
+    @rest = { key: name.to_sym, block: }
   end
 end
 
+__END__
 return unless $0 == __FILE__
 require_relative 'optparse2/pathname'
 
 # $* << '-tFOO' << '--no-cache' << '-x'
-$* << '-h'
+# $*.replace %w[123 lol what -t10 is up here]
+$*.replace %w[]
 
 OPTS={}
 OptParse2.new do |op|
-  op.on '-t', '--timeout=FOO', Array
-  op.pos 'file', Integer, 'sets the file name', 'is also pretty cool', 1..10 do end
-  op.pos 'start[-end]', 'things to do', key: 'line', optional: true
-  puts op
-  exit
-  # op.on '-t', '--[no-]timeout[=f]', Array, default: false
-  # p op.make_switch
-  # op.rest 'bar'
-  # op.on '--[no-]cache-file=PATH', Pathname, default: :LOL
-  # op.on '-x', '--lol', key: :a123
-  # op.on '--period=PERIOD', Integer
-  # op.on '-t', '--ticker=TICKER', &:upcase
+  $op = op
+  op.on '-t', '--timeout=FOO', Array,required: true
+  op.pos 'file', Integer, 'sets the file name', 'is also pretty cool', 1..1000, required: true do it * 2 end
+  op.pos '[start[-end]]', 'things to do', key: 'line', default: 123
 
+  op.rest 'message', 'Message to submit' do it.join ' ' end
   op.parse! into: OPTS
-  p OPTS
-  # op.abort 'a ticker must be supplied' unless OPTS[:ticker]
+  p ["finish: ", OPTS, $*]
 end
