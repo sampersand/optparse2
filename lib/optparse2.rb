@@ -225,7 +225,7 @@ class OptParse2
     @positional.append sw
   end
 
-  def rest(name, *description, key: name, required: 0, &block)
+  def rest(name, *description, key: name.to_s.tr(' ', '-').to_sym, required: 0, &block)
     title = "#{'[' if required.zero?}#{name} ...#{']' if required.zero?}"
     banner.concat " #{title}" if pos_set_banner
     title += " (#{required} arg minimum)" if required > 0
@@ -245,7 +245,7 @@ require_relative 'optparse2/pathname'
 
 # $* << '-tFOO' << '--no-cache' << '-x'
 # $*.replace %w[123 lol what -t10 is up here]
-$*.replace %w[1 -t3 b -h ]
+$*.replace %w[1 -t3 b lol what is up]
 
 OPTS={}
 OptParse2.new do |op|
@@ -254,7 +254,7 @@ OptParse2.new do |op|
   op.pos 'file', Integer, 'sets the file name', 'is also pretty cool', 1..1000, required: true do it * 2 end
   op.pos '[start[-end]]', 'things to do', key: 'line', default: 123
 
-  op.rest 'message', 'Message to submit', 'pretty coo', required: 1 do it.join ' ' end
+  op.rest 'branch name', 'Message to submit', 'pretty coo', required: 1 do it.join ' ' end
   op.parse! into: OPTS
   p ["finish: ", OPTS, $*]
 end
