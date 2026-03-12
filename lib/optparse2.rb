@@ -126,7 +126,10 @@ class OptParse2
     old_raise, self.raise_unknown = self.raise_unknown, false
     begin
       super(argv2, into: already_done, **keywords)
-    rescue
+    rescue OptParse::InvalidArgument => err
+      err.args[0] = @positional[err.args[0][/\d+/].to_i].name
+      raise
+    ensure
       self.raise_unknown = old_raise
     end
 
@@ -135,6 +138,8 @@ class OptParse2
     if @rest
       argv2 = @rest[:block].call(argv2)
       into[@rest[:key]] = argv2 if @rest[:key]
+    elsif !argv.empty? && self.raise_unknown && !@positional.empty?
+      raise ParseError, "got unexpected positional argument: #{argv2.inspect}"
     else
       argv2.each(&nonopt)
     end
@@ -227,7 +232,7 @@ require_relative 'optparse2/pathname'
 
 # $* << '-tFOO' << '--no-cache' << '-x'
 # $*.replace %w[123 lol what -t10 is up here]
-$*.replace %w[]
+$*.replace %w[--timeout=a a]
 
 OPTS={}
 OptParse2.new do |op|
@@ -236,7 +241,7 @@ OptParse2.new do |op|
   op.pos 'file', Integer, 'sets the file name', 'is also pretty cool', 1..1000, required: true do it * 2 end
   op.pos '[start[-end]]', 'things to do', key: 'line', default: 123
 
-  op.rest 'message', 'Message to submit' do it.join ' ' end
+  # op.rest 'message', 'Message to submit' do it.join ' ' end
   op.parse! into: OPTS
   p ["finish: ", OPTS, $*]
 end
