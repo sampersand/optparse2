@@ -136,6 +136,10 @@ class OptParse2
     argv2 = argv2.each_slice(2).map { _2 }
 
     if @rest
+      if argv2.length < @rest.fetch(:required, 0)
+        raise ParseError, "at least #{@rest[:required]} trailing arguments required (only got #{argv2.length})", caller(1)
+      end
+
       argv2 = @rest[:block].call(argv2)
       into[@rest[:key]] = argv2 if @rest[:key]
     elsif !argv2.empty? && self.raise_unknown && !@positional.empty?
@@ -221,8 +225,17 @@ class OptParse2
     @positional.append sw
   end
 
-  def rest(name, description, &block)
-    @rest = { key: name.to_sym, block: }
+  def rest(name, *description, key: name, required: 0, &block)
+    title = "#{'[' if required.zero?}#{name} ...#{']' if required.zero?}"
+    banner.concat " #{title}" if pos_set_banner
+    title += " (#{required} arg minimum)" if required > 0
+
+    on sprintf "%s%-*s %s", summary_indent, summary_width, title, description.first
+    description[1..].each do |descr|
+      on sprintf "%s%-*s %s", summary_indent, summary_width, '', descr
+    end
+
+    @rest = { name:, key:, required: required || 0, block: }
   end
 end
 
@@ -232,7 +245,7 @@ require_relative 'optparse2/pathname'
 
 # $* << '-tFOO' << '--no-cache' << '-x'
 # $*.replace %w[123 lol what -t10 is up here]
-$*.replace %w[1 -t3 b c ]
+$*.replace %w[1 -t3 b -h ]
 
 OPTS={}
 OptParse2.new do |op|
@@ -241,7 +254,7 @@ OptParse2.new do |op|
   op.pos 'file', Integer, 'sets the file name', 'is also pretty cool', 1..1000, required: true do it * 2 end
   op.pos '[start[-end]]', 'things to do', key: 'line', default: 123
 
-  # op.rest 'message', 'Message to submit' do it.join ' ' end
+  op.rest 'message', 'Message to submit', 'pretty coo', required: 1 do it.join ' ' end
   op.parse! into: OPTS
   p ["finish: ", OPTS, $*]
 end
