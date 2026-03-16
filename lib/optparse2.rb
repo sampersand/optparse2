@@ -121,7 +121,7 @@ class OptParse2
 
     result = super(argv, into: already_done, **keywords, &non_options.method(:<<))
 
-    argv2 = non_options.each_with_index.flat_map { ["--*-positional-#{_2}", _1] }
+    argv2 = (non_options + result).each_with_index.flat_map { ["--*-positional-#{_2}", _1] }
 
     old_raise, self.raise_unknown = self.raise_unknown, false
     begin
@@ -141,7 +141,8 @@ class OptParse2
       end
 
       argv2 = @rest[:block] ? @rest[:block].call(argv2) : argv2
-      into[@rest[:key]] = argv2 if @rest[:key]
+      into[@rest[:key]] = argv2.dup if @rest[:key]
+      argv2.clear
     elsif !argv2.empty? && self.raise_unknown && !@positional.empty?
       raise ParseError, "got unexpected positional argument: #{argv2.first}", caller(1)
     else
@@ -245,7 +246,7 @@ require_relative 'optparse2/pathname'
 
 # $* << '-tFOO' << '--no-cache' << '-x'
 # $*.replace %w[123 lol what -t10 is up here]
-$*.replace %w[1 -t3 b lol what is up]
+$*.replace %w[1 -t3 bb lol what -- is up]
 
 OPTS={}
 OptParse2.new do |op|
@@ -255,6 +256,6 @@ OptParse2.new do |op|
   op.pos '[start[-end]]', 'things to do', key: 'line', default: 123
 
   op.rest 'branch name', 'Message to submit', 'pretty coo', required: 1 do it.join ' ' end
-  op.parse! into: OPTS
+  p op.parse! into: OPTS
   p ["finish: ", OPTS, $*]
 end
