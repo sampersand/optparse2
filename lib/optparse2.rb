@@ -6,7 +6,6 @@ OptionParser2 = OptParse2 # Alias
 
 require_relative "optparse2/version"
 require_relative "optparse2/fixes"
-# require_relative "optparse2/helpers"
 
 class OptParse2
   class << self
@@ -29,20 +28,18 @@ class OptParse2
       def self.summarize(*) end
     end
 
-    def switch_name=(val)
-      # binding.irb
-      @switch_name = val
-    end
+    attr_writer :switch_name
+    def switch_name; defined?(@switch_name) ? @switch_name : super end
 
-    def set_block_name_because_of_switch_name
+    def set_switch_name_possibly_block_value
       if @block.nil? && @arg.nil?
-        q = @switch_name.to_sym
+        q = switch_name.to_sym
         @block = proc { q }
       end
+
+      self.switch_name = val
     end
 
-    # attr_writer :switch_name
-    def switch_name; defined?(@switch_name) ? @switch_name : super end
 
     # requires `switch_name`, `desc` to work
     def set_default(value, description)
@@ -73,8 +70,7 @@ class OptParse2
 
     sw.extend Helpers
     if key
-      sw.switch_name = key
-      sw.set_block_name_because_of_switch_name
+      sw.set_switch_name_possibly_block_value key
     end
     sw.set_hidden if hidden
 
@@ -238,24 +234,4 @@ class OptParse2
 
     @rest = { name:, key:, required: required || 0, block: }
   end
-end
-
-__END__
-return unless $0 == __FILE__
-require_relative 'optparse2/pathname'
-
-# $* << '-tFOO' << '--no-cache' << '-x'
-# $*.replace %w[123 lol what -t10 is up here]
-$*.replace %w[1 -t3 bb lol what -- is up]
-
-OPTS={}
-OptParse2.new do |op|
-  $op = op
-  op.on '-t', '--timeout=FOO', Array,required: true
-  op.pos 'file', Integer, 'sets the file name', 'is also pretty cool', 1..1000, required: true do it * 2 end
-  op.pos '[start[-end]]', 'things to do', key: 'line', default: 123
-
-  op.rest 'branch name', 'Message to submit', 'pretty coo', required: 1 do it.join ' ' end
-  p op.parse! into: OPTS
-  p ["finish: ", OPTS, $*]
 end
