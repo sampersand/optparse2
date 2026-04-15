@@ -31,7 +31,7 @@ class OptParse2
     attr_writer :switch_name
     def switch_name; defined?(@switch_name) ? @switch_name : super end
 
-    def set_switch_name_possibly_block_value
+    def set_switch_name_possibly_block_value(val)
       if @block.nil? && @arg.nil?
         q = switch_name.to_sym
         @block = proc { q }
@@ -223,6 +223,14 @@ class OptParse2
   end
 
   def rest(name, *description, key: name.to_s.tr(' ', '-').to_sym, required: 0, &block)
+    required = case required
+               when true then 1
+               when false then 0
+               when ->x{ Integer === x && !x.negative? } then required
+               else raise TypeError, "invalid type for required: #{required.class} (must be bool or positive integer)"
+               end
+
+    required = 1 if required == true
     title = "#{'[' if required.zero?}#{name} ...#{']' if required.zero?}"
     banner.concat " #{title}" if pos_set_banner
     title += " (#{required} arg minimum)" if required > 0
