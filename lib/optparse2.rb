@@ -13,11 +13,15 @@ class OptParse2
   end
   self.pos_set_banner = true
 
+  attr_reader :into
+
   def initialize(...)
     @defaults = Set[]
     @positional = []
     @required = Set[]
     @rest = nil
+    @into = nil
+    @group = nil
     self.pos_set_banner = OptParse2.pos_set_banner
     super
   end
@@ -64,7 +68,7 @@ class OptParse2
   end
 
   # Update `make_switch` to support OptParse2's keyword arguments
-  def make_switch(opts, block, hidden: false, key: nil, default: nodefault=true, default_description: nil,
+  def make_switch(opts, block, hidden: false, key: @group, default: nodefault=true, default_description: nil,
     required: false)
     sw, *rest = super(opts, block)
 
@@ -102,6 +106,17 @@ class OptParse2
     on_tail("\n" + msg)
   end
 
+  def group(name, default: nodefault=true)
+    old_group, @group = @group, name
+    yield
+    if !nodefault && !@defaults.any? { |x| x.switch_name.to_sym == name }
+      (orig_default = default; default = proc { orig_default }) unless default.respond_to?(:call)
+      @defaults << Struct.new(:switch_name, :default_){ def default = default_.() }.new(name, default) # TODO: This should probably be extracted out into a class lol
+    end
+  ensure
+    @group = old_group
+  end
+
   def order!(argv = default_argv, into: nil, **keywords, &nonopt)
     if into.nil? && !@defaults.empty?
       raise "cannot call `order!` without an `into:` if there are default values"
@@ -112,6 +127,11 @@ class OptParse2
       super(key, value)
       into[key] = value
     end
+
+    # Really this shouldn't be on the class and should probably be passed to the block of each
+    # parameter as requested, but that requires a _significant_ amount of tinkering with `optparse`'s
+    # internals, which is not really in scope.
+    @into = already_done
 
     non_options = []
 
@@ -156,6 +176,8 @@ class OptParse2
     end
 
     argv2
+  ensure
+    @into = nil # make sure we unset it when returning
   end
 
   module Positional
