@@ -32,6 +32,7 @@ class OptParse2
       def self.summarize(*) end
     end
 
+    attr_reader :multiple, :at_end
     attr_writer :switch_name
     def switch_name; defined?(@switch_name) ? @switch_name : super end
 
@@ -44,6 +45,38 @@ class OptParse2
       self.switch_name = val
     end
 
+    def set_multiple(multiple)
+      return if multiple.nil?
+      orig_block = @block
+      @multiple = multiple
+      case multiple
+      when :first
+        @first_value = nil
+
+        @block = proc { |*a, **k, &b| @first_value ||= [a, k, b] }
+        @at_end = proc { (a, k, b) = @first_value; orig_block.call(*a, **k, &b) }
+      when :last
+        @last_value = nil
+
+        @block = proc { |*a, **k, &b| @last_value = [a, k, b] }
+        @at_end = proc { (a, k, b) = @last_value; orig_block.call(*a, **k, &b) }
+      when :raise
+        # don't really work for multiple `key:`s
+        @encountered = false
+        @block = proc { |*a, **, &b|
+          if @encountered
+            raise ParseError, "got a duplicate argument for #{switch_name} positional argument: #{argv2.first}", caller(1)
+          end
+        }
+      when :count then
+        @multiple_value = 0
+        # TODO: Make sure no regex i think? make sure block args are normal
+        @block = proc { @multiple_value += 1 }
+        @at_end = proc { orig_block.call(@multiple_value) }
+      when :collect
+      else raise ArgumentError, "invalid multiple argument: #{multiple}", caller(2)
+      end
+    end
 
     # requires `switch_name`, `desc` to work
     def set_default(value, description)
@@ -68,8 +101,16 @@ class OptParse2
   end
 
   # Update `make_switch` to support OptParse2's keyword arguments
-  def make_switch(opts, block, hidden: false, key: @group, default: nodefault=true, default_description: nil,
-    required: false)
+  def make_switch(
+    opts,
+    block,
+    hidden: false,
+    key: @group,
+    default: nodefault=true,
+    default_description: nil,
+    required: false,
+    multiple: nil
+  )
     sw, *rest = super(opts, block)
 
     sw.extend Helpers
@@ -77,6 +118,7 @@ class OptParse2
       sw.set_switch_name_possibly_block_value key
     end
     sw.set_hidden if hidden
+    sw.set_multiple multiple if multiple
 
     if (not_style = rest[2])
       not_style.extend Helpers
@@ -163,6 +205,12 @@ class OptParse2
       raise ParseError, "got unexpected positional argument: #{argv2.first}", caller(1)
     else
       argv2.each(&nonopt)
+    end
+
+    @stack.reverse_each do |el|
+      el.each_option do |op|
+        already_done[op.switch_name] = op.at_end&.call
+      end
     end
 
     @defaults.each do |sw|
@@ -265,3 +313,19 @@ class OptParse2
     @rest = { name:, key:, required: required || 0, block: }
   end
 end
+
+OptParse2.new do |op|
+  op.on '-v', '--verbose', multiple: :count do |v|
+    puts "verbosity: #{v}"
+  end
+  op.on '-f', '--foo' do puts "foo set" end
+  op.on '-b', '--bar=BAR', multiple: :first do puts "bar set: #{it}" end
+
+  op.parse! %w[ -f -bq -vv --bar=BAR -v ], into: opts={}
+end
+
+# OptParse2.new do |op|
+#   op.on '-f', '--foo=BAR', multiple: :raise
+#   op.parse! %w[ -f1 -f2 ], into: opts={}
+#   p opts
+# end
