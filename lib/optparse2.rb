@@ -6,6 +6,7 @@ OptionParser2 = OptParse2 # Alias
 
 require_relative "optparse2/version"
 require_relative "optparse2/fixes"
+require_relative "optparse2/switch-helpers"
 
 class OptParse2
   class << self
@@ -26,50 +27,17 @@ class OptParse2
     super
   end
 
-  ## Helpers is a mixin that contains methods to modify how the original `Switch` works
-  module Helpers
-    def set_hidden
-      def self.summarize(*) end
-    end
-
-    attr_writer :switch_name
-    def switch_name; defined?(@switch_name) ? @switch_name : super end
-
-    def set_switch_name_possibly_block_value(val)
-      if @block.nil? && @arg.nil?
-        q = switch_name.to_sym
-        @block = proc { q }
-      end
-
-      self.switch_name = val
-    end
-
-
-    # requires `switch_name`, `desc` to work
-    def set_default(value, description)
-      if defined? value.call
-        @default = value
-      else
-        @default = proc { value }
-      end
-
-      @default_description = description
-    end
-
-    def default = @default.call(switch_name)
-    def default_description = @default_description || default.inspect
-    def desc
-      return super unless defined? @default
-      x = super
-      x << '' if x.empty?
-      x[-1] += " [default: #{default_description}]"
-      x
-    end
-  end
-
   # Update `make_switch` to support OptParse2's keyword arguments
-  def make_switch(opts, block, hidden: false, key: @group, default: nodefault=true, default_description: nil,
-    required: false)
+  def make_switch(
+    opts,
+    block,
+    hidden: false,
+    key: @group,
+    default: nodefault=true,
+    default_description: nil,
+    required: false
+  )
+    p block
     sw, *rest = super(opts, block)
 
     sw.extend Helpers
