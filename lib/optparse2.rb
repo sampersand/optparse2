@@ -14,14 +14,11 @@ class OptParse2
   end
   self.pos_set_banner = true
 
-  attr_reader :into
-
   def initialize(...)
     @defaults = Set[]
     @positional = []
     @required = Set[]
     @rest = nil
-    @into = nil
     @group = nil
     self.pos_set_banner = OptParse2.pos_set_banner
     super
@@ -34,10 +31,10 @@ class OptParse2
     hidden: false,
     key: @group,
     default: nodefault=true,
+    default_bypass: false,
     default_description: nil,
     required: false
   )
-    p block
     sw, *rest = super(opts, block)
 
     sw.extend Helpers
@@ -61,8 +58,10 @@ class OptParse2
 
     if nodefault && default_description != nil
       raise ArgumentError, "default: not supplied, but default_description: given"
+    elsif nodefault && default_bypass
+      raise ArgumentError, "default: not supplied, but default_bypass: given"
     elsif not nodefault
-      sw.set_default(default, default_description)
+      sw.set_default(default, default_description, default_bypass)
       @defaults << sw
     end
 
@@ -85,31 +84,20 @@ class OptParse2
     @group = old_group
   end
 
-  def order!(argv = default_argv, into: nil, **keywords, &nonopt)
-    if into.nil? && !@defaults.empty?
-      raise "cannot call `order!` without an `into:` if there are default values"
-    end
+  alias _super_order! order!
 
-    already_done = {}
-    already_done.define_singleton_method(:[]=) do |key, value|
-      super(key, value)
-      into[key] = value
-    end
+  # Parses all positional arguments from `argv` into `into`. Replaces `argv` with non-positional
+  # arguments when it's done.
+  private def parse_positional_arguments!(argv, parsed_arguments, keywords)
+    return if argv.empty? || @positional.empty?
 
-    # Really this shouldn't be on the class and should probably be passed to the block of each
-    # parameter as requested, but that requires a _significant_ amount of tinkering with `optparse`'s
-    # internals, which is not really in scope.
-    @into = already_done
+    # Prepend argument number to the argument array
+    argv.replace argv.each_with_index.flat_map { |value, idx| ["--*-positional-#{idx}", value] }
 
-    non_options = []
-
-    result = super(argv, into: already_done, **keywords, &non_options.method(:<<))
-
-    argv2 = (non_options + result).each_with_index.flat_map { ["--*-positional-#{_2}", _1] }
-
+    # Fetch all positional arguments using the same option parsing code
     old_raise, self.raise_unknown = self.raise_unknown, false
     begin
-      super(argv2, into: already_done, **keywords)
+      p _super_order!(argv, into: parsed_arguments, **keywords)
     rescue OptParse::InvalidArgument => err
       err.args[0] = @positional[err.args[0][/\d+/].to_i].name
       raise
@@ -117,35 +105,78 @@ class OptParse2
       self.raise_unknown = old_raise
     end
 
-    argv2 = argv2.each_slice(2).map { _2 }
+    # Delete any non-matching arguments. TODO: Can this be the return value of `_super_order!` ?
+    argv.replace argv.each_slice(2).map { |_flag_name, value| value }
+  end
 
+  # If a "rest" parameter was given, populates it. Also raises a ParseError exception for unexepcted
+  # positionals if no `.rest` parameter is present, `self.raise_unknown` is set, and at least one `.pos`
+  # positional argument was supplied
+  private def parse_rest_argument!(argv, parsed_arguments)
     if @rest
-      if argv2.length < @rest.fetch(:required, 0)
-        raise ParseError, "at least #{@rest[:required]} trailing arguments required (only got #{argv2.length})", caller(1)
+      if argv.length < @rest.fetch(:required, 0)
+        raise ParseError, "at least #{@rest[:required]} trailing arguments required (only got #{argv.length})", caller(1)
       end
 
-      argv2 = @rest[:block] ? @rest[:block].call(argv2) : argv2
-      into[@rest[:key]] = argv2.dup if @rest[:key]
-      argv2.clear
-    elsif !argv2.empty? && self.raise_unknown && !@positional.empty?
-      raise ParseError, "got unexpected positional argument: #{argv2.first}", caller(1)
-    else
-      argv2.each(&nonopt)
+      argv = @rest[:block] ? @rest[:block].call(argv) : argv
+      parsed_arguments[@rest[:key]] = argv.dup if @rest[:key]
+      argv.clear
+    elsif !argv.empty? && self.raise_unknown && !@positional.empty?
+      raise ParseError, "got unexpected positional argument: #{argv.first}", caller(1)
     end
+  end
 
-    @defaults.each do |sw|
-      key = sw.switch_name.to_sym
-      next if already_done.key? key
-      into[key] = sw.default()
+  # Goes thru every default option, and calls
+  private def assign_defaults!(parsed_arguments)
+    visit :each_option do |sw|
+      next if !sw.default? || parsed_arguments.key?(key = sw.switch_name.to_sym)
+
+      if sw.default_bypass?
+        parsed_arguments[key] = sw.default
+      else
+        flag = sw.short.first || sw.long.first || raise("<INTERNAL ERROR: CAN THIS EVER HAPPEN?>")
+        _super_order! [flag, sw.default], into: parsed_arguments
+      end
     end
+  end
 
+  private def ensure_all_required_arguments_were_supplied!(parsed_arguments)
     @required.each do |key|
-      raise ParseError, "required option '#{key}' not provided" unless already_done.key? key.to_sym
+      raise ParseError, "required option '#{key}' not provided" unless parsed_arguments.key? key.to_sym
+    end
+  end
+
+  def order!(argv = default_argv, into: nil, **keywords, &nonopt)
+    parsed_arguments = {}
+
+    if into
+      parsed_arguments.define_singleton_method(:[]=) do |key, value|
+        super(key, value)
+        into[key] = value
+      end
     end
 
-    argv2
-  ensure
-    @into = nil # make sure we unset it when returning
+    # Parse all normal options in the command line
+    non_options = []
+    trailing_options = super(argv, into: parsed_arguments, **keywords, &non_options.method(:<<))
+    not_matched_options = non_options + trailing_options
+
+    # Now parse positional arguments and the "rest" argument
+    parse_positional_arguments!(not_matched_options, parsed_arguments, keywords)
+    parse_rest_argument!(not_matched_options, parsed_arguments)
+
+    # Now handle defaults---anything with a default that hasn't been assigned so far is set
+    assign_defaults!(parsed_arguments)
+
+    # Now that all arguments are parsed, and the defaults have been handled, check to make sure
+    # that all required arguments are handled.
+    ensure_all_required_arguments_were_supplied!(parsed_arguments)
+
+    # For each non-option argument, call the `nonopt` block
+    not_matched_options.each(&nonopt)
+
+    # Replace the original argv with the resulting options
+    argv.replace not_matched_options
   end
 
   module Positional
@@ -226,10 +257,36 @@ class OptParse2
     title += " (#{required} arg minimum)" if required > 0
 
     on sprintf "%s%-*s %s", summary_indent, summary_width, title, description.first
-    description[1..].each do |descr|
+    description[1..]&.each do |descr|
       on sprintf "%s%-*s %s", summary_indent, summary_width, '', descr
     end
 
     @rest = { name:, key:, required: required || 0, block: }
   end
+end
+
+# OptParse.new do |op|
+#   op.on '--foo=bar', /(.)(.)/ do |x| p x end
+#     op.parse! %w[ --foo=34 ]
+# end
+__END__
+OptionParser2.new do |op|
+  op.on '-e', default: true
+  op.on '--bar1=ALL', default: 'hello', &:upcase
+  op.on '--doit=WHAT', /(.)(.)/, key: :A, default: 'xu' do
+    p [_1, _2, 'both!']
+  end
+
+  op.pos 'foo', required: true do 3 end
+  op.pos 'bar', required: true
+  op.pos 'baz', required: false
+  op.pos 'quux', required: false
+  # op.rest 'files'
+
+
+  rest = op.order!(argv = %w[ --doit 3q a b ] , into: opts={})
+
+  puts "rest=#{rest}"
+  puts "argv=#{argv}"
+  puts "opts=#{opts}"
 end
