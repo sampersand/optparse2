@@ -152,7 +152,7 @@ class OptParse2
     end
   end
 
-  def order!(argv = default_argv, into: nil, **keywords, &nonopt)
+  def order!(argv = default_argv, into: nil, abort: false, **keywords, &nonopt)
     Context.with_context into:, nonopt: do |context|
 
       # Parse all normal options in the command line
@@ -179,6 +179,8 @@ class OptParse2
       # Replace the original argv with the resulting options
       argv.replace not_matched_options
     end
+  rescue OptionParser::ParseError => err
+    abort ? abort(err) : raise
   end
 
   module Positional
@@ -283,7 +285,7 @@ OptParse2.new do |op|
     p x
   end
 
-  op.parse! %w[ -vvv --foo=abc --bar=123 --foo=xyz -a3 -a4 -a5 ], into: opts={}
+  op.parse! %w[ -vvv -q --foo=abc --bar=123 --foo=xyz -a3 -a4 -a5 ], into: opts={}
   p opts
 end
 
