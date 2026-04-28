@@ -131,12 +131,15 @@ class OptParse2
     visit :each_option do |sw|
       next if !sw.default? || context.key?(key = sw.switch_name.to_sym)
 
+=begin TODO: figure out how to re-parse variables (so it goes thru the whole validation scheme for defaults?)
       if sw.default_bypass?
         context[key] = sw.default
       else
         flag = sw.short.first || sw.long.first || raise("<INTERNAL ERROR: CAN THIS EVER HAPPEN?>")
         _super_order! [flag, sw.default], into: context
       end
+=end
+      context[key] = sw.default
     end
   end
 
