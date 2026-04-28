@@ -103,7 +103,7 @@ class OptParse2
     # Fetch all positional arguments using the same option parsing code
     old_raise, self.raise_unknown = self.raise_unknown, false
     begin
-      p _super_order!(argv, into: context, **keywords)
+      _super_order!(argv, into: context, **keywords)
     rescue OptParse::InvalidArgument => err
       err.args[0] = @positional[err.args[0][/\d+/].to_i].name
       raise
@@ -237,7 +237,9 @@ class OptParse2
 
   attr_accessor :pos_set_banner
   def pos(name, *a, key: name, **b, &block)
-    banner.concat " #{name}" if pos_set_banner
+    if pos_set_banner
+      banner.concat " #{b[:required] ? '' : '['}#{name}#{b[:required] ? '' : ']'}"
+    end
 
     sw, *rest = make_switch ["--*-positional-#{@positional.length} #{name}", *a], block, key:, **b
     sw.extend Positional
