@@ -161,7 +161,7 @@ class OptParse2
 
     def default_description = @default_description || default.inspect
     def desc
-      return super unless defined? @default
+      return super unless defined? @default_proc
       x = super
       x << '' if x.empty?
       x[-1] += " [default: #{default_description}]"
