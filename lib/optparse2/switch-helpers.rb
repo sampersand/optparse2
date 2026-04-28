@@ -136,10 +136,25 @@ class OptParse2
       self.switch_name = val
     end
 
+    # Required arguments must be supplied by the user. They conflict with `default` options, and
+    # cause an error if both required and default are specified
+    def set_required(required)
+      if default?
+        raise ArgumentError, 'cannot require an argument with a default value'
+      end
+      @required = required
+    end
+
+    def required? = @required
+
     # Default values of switches are used when the switch is never passed in.
     # If the `value` that's provided doesn't respond to `.call`, it's converted to a proc.
     # If `bypass` is truthy, then the default value is never passed to the block's proc (if any)
     def set_default(value, description, bypass)
+      if required?
+        raise ArgumentError, 'cannot supply a default value for a required argument'
+      end
+
       if @arg.nil? && value != true && !bypass
         raise ArgumentError, "Cannot supply a non-true default value to a flag which takes no arguments", caller(4)
       end

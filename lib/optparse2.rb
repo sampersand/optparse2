@@ -18,7 +18,6 @@ class OptParse2
   def initialize(...)
     @defaults = Set[]
     @positional = []
-    @required = Set[]
     @rest = nil
     @group = nil
     self.pos_set_banner = OptParse2.pos_set_banner
@@ -55,12 +54,7 @@ class OptParse2
       not_style.set_hidden if hidden
     end
 
-    if required
-      unless nodefault
-        raise ArgumentError, "cannot supply both a default with required: true"
-      end
-      @required << sw.switch_name
-    end
+    sw.set_required true if required
 
     if nodefault && default_description != nil
       raise ArgumentError, "default: not supplied, but default_description: given"
@@ -147,8 +141,10 @@ class OptParse2
   end
 
   private def ensure_all_required_arguments_were_supplied!(context)
-    @required.each do |key|
-      raise ParseError, "required option '#{key}' not provided" unless context.key? key.to_sym
+    visit :each_option do |sw|
+      next unless sw.required?
+      key = sw.switch_name.to_sym
+      raise ParseError, "required option '#{key}' not provided" unless context.key? key
     end
   end
 
