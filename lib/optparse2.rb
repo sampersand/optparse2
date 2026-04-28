@@ -7,6 +7,7 @@ OptionParser2 = OptParse2 # Alias
 require_relative "optparse2/version"
 require_relative "optparse2/fixes"
 require_relative "optparse2/switch-helpers"
+require_relative "optparse2/context"
 
 class OptParse2
   class << self
@@ -24,6 +25,9 @@ class OptParse2
     super
   end
 
+  # A constant that, when returned, will not actually assign objects inside `into:`s.
+  DONT_ASSIGN = Object.new.freeze
+
   # Update `make_switch` to support OptParse2's keyword arguments
   def make_switch(
     opts,
@@ -33,7 +37,8 @@ class OptParse2
     default: nodefault=true,
     default_bypass: false,
     default_description: nil,
-    required: false
+    required: false,
+    multiple: nil
   )
     sw, *rest = super(opts, block)
 
@@ -42,6 +47,7 @@ class OptParse2
       sw.set_switch_name_possibly_block_value key
     end
     sw.set_hidden if hidden
+    sw.set_multiple multiple if multiple
 
     if (not_style = rest[2])
       not_style.extend Helpers
@@ -88,7 +94,7 @@ class OptParse2
 
   # Parses all positional arguments from `argv` into `into`. Replaces `argv` with non-positional
   # arguments when it's done.
-  private def parse_positional_arguments!(argv, parsed_arguments, keywords)
+  private def parse_positional_arguments!(argv, context, keywords)
     return if argv.empty? || @positional.empty?
 
     # Prepend argument number to the argument array
@@ -97,7 +103,7 @@ class OptParse2
     # Fetch all positional arguments using the same option parsing code
     old_raise, self.raise_unknown = self.raise_unknown, false
     begin
-      p _super_order!(argv, into: parsed_arguments, **keywords)
+      p _super_order!(argv, into: context, **keywords)
     rescue OptParse::InvalidArgument => err
       err.args[0] = @positional[err.args[0][/\d+/].to_i].name
       raise
@@ -112,14 +118,14 @@ class OptParse2
   # If a "rest" parameter was given, populates it. Also raises a ParseError exception for unexepcted
   # positionals if no `.rest` parameter is present, `self.raise_unknown` is set, and at least one `.pos`
   # positional argument was supplied
-  private def parse_rest_argument!(argv, parsed_arguments)
+  private def parse_rest_argument!(argv, context)
     if @rest
       if argv.length < @rest.fetch(:required, 0)
         raise ParseError, "at least #{@rest[:required]} trailing arguments required (only got #{argv.length})", caller(1)
       end
 
       argv = @rest[:block] ? @rest[:block].call(argv) : argv
-      parsed_arguments[@rest[:key]] = argv.dup if @rest[:key]
+      context[@rest[:key]] = argv.dup if @rest[:key]
       argv.clear
     elsif !argv.empty? && self.raise_unknown && !@positional.empty?
       raise ParseError, "got unexpected positional argument: #{argv.first}", caller(1)
@@ -127,56 +133,52 @@ class OptParse2
   end
 
   # Goes thru every default option, and calls
-  private def assign_defaults!(parsed_arguments)
+  private def assign_defaults!(context)
     visit :each_option do |sw|
-      next if !sw.default? || parsed_arguments.key?(key = sw.switch_name.to_sym)
+      next if !sw.default? || context.key?(key = sw.switch_name.to_sym)
 
       if sw.default_bypass?
-        parsed_arguments[key] = sw.default
+        context[key] = sw.default
       else
         flag = sw.short.first || sw.long.first || raise("<INTERNAL ERROR: CAN THIS EVER HAPPEN?>")
-        _super_order! [flag, sw.default], into: parsed_arguments
+        _super_order! [flag, sw.default], into: context
       end
     end
   end
 
-  private def ensure_all_required_arguments_were_supplied!(parsed_arguments)
+  private def ensure_all_required_arguments_were_supplied!(context)
     @required.each do |key|
-      raise ParseError, "required option '#{key}' not provided" unless parsed_arguments.key? key.to_sym
+      raise ParseError, "required option '#{key}' not provided" unless context.key? key.to_sym
     end
   end
 
   def order!(argv = default_argv, into: nil, **keywords, &nonopt)
-    parsed_arguments = {}
+    Context.with_context into:, nonopt: do |context|
 
-    if into
-      parsed_arguments.define_singleton_method(:[]=) do |key, value|
-        super(key, value)
-        into[key] = value
-      end
+      # Parse all normal options in the command line
+      non_options = []
+      trailing_options = super(argv, into: context, **keywords, &non_options.method(:<<))
+      not_matched_options = non_options + trailing_options
+
+      # Now parse positional arguments and the "rest" argument
+      parse_positional_arguments!(not_matched_options, context, keywords)
+      parse_rest_argument!(not_matched_options, context)
+
+      context.handle_deferred!
+
+      # Now handle defaults---anything with a default that hasn't been assigned so far is set
+      assign_defaults!(context)
+
+      # Now that all arguments are parsed, and the defaults have been handled, check to make sure
+      # that all required arguments are handled.
+      ensure_all_required_arguments_were_supplied!(context)
+
+      # For each non-option argument, call the `nonopt` block
+      not_matched_options.each(&nonopt)
+
+      # Replace the original argv with the resulting options
+      argv.replace not_matched_options
     end
-
-    # Parse all normal options in the command line
-    non_options = []
-    trailing_options = super(argv, into: parsed_arguments, **keywords, &non_options.method(:<<))
-    not_matched_options = non_options + trailing_options
-
-    # Now parse positional arguments and the "rest" argument
-    parse_positional_arguments!(not_matched_options, parsed_arguments, keywords)
-    parse_rest_argument!(not_matched_options, parsed_arguments)
-
-    # Now handle defaults---anything with a default that hasn't been assigned so far is set
-    assign_defaults!(parsed_arguments)
-
-    # Now that all arguments are parsed, and the defaults have been handled, check to make sure
-    # that all required arguments are handled.
-    ensure_all_required_arguments_were_supplied!(parsed_arguments)
-
-    # For each non-option argument, call the `nonopt` block
-    not_matched_options.each(&nonopt)
-
-    # Replace the original argv with the resulting options
-    argv.replace not_matched_options
   end
 
   module Positional
@@ -263,6 +265,26 @@ class OptParse2
 
     @rest = { name:, key:, required: required || 0, block: }
   end
+end
+
+__END__
+OptParse2.new do |op|
+  op.on '--foo=FOO', multiple: :first! do puts "FOO: #{it}"; it end
+  op.on '--bar=BAR'                   do puts "BAR: #{it}"; it end
+
+  op.on '-v', '--verbose[=X]', Integer, multiple: :count
+
+  # op.on '-v', '--verbose[=X]', Integer, multiple: :count! do
+  #   puts "verbose is: #{it}"
+  #   it
+  # end
+
+  op.on '-aF', Integer, multiple: [:collect, :succ.to_proc] do |x|
+    p x
+  end
+
+  op.parse! %w[ -vvv --foo=abc --bar=123 --foo=xyz -a3 -a4 -a5 ], into: opts={}
+  p opts
 end
 
 # OptParse.new do |op|

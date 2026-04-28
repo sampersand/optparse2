@@ -15,6 +15,108 @@ class OptParse2
       defined?(@switch_name) ? @switch_name : super
     end
 
+    def set_multiple(multiple)
+      old_block = @block
+      sw = switch_name.to_sym
+
+      case multiple
+      in :first!
+        @block = ->(arg, **nil) do
+          ctx = OptParse2::Context.current
+          if ctx.deferred_options.key? sw
+            OptParse2::DONT_ASSIGN
+          else
+            ctx.deferred_options[sw] = {}
+            old_block ? old_block.call(arg) : arg
+          end
+        end
+      in :first
+        @block = ->(arg, **nil) do
+          ctx = OptParse2::Context.current
+          if ctx.deferred_options.key? sw
+            OptParse2::DONT_ASSIGN
+          else
+            ctx.deferred_options[sw] = {
+              proc: old_block ? proc{ old_block.call(arg) } : proc { arg }
+            }
+            OptParse2::DONT_ASSIGN
+          end
+        end
+      in :last!, nil
+        # don't do anything, this is the default behaviour
+      in :last
+        @block = ->(arg, **nil) do
+          ctx = OptParse2::Context.current
+          ctx.deferred_options[sw] = {
+            proc: old_block ? proc { old_block.call(arg) } : proc { arg }
+          }
+
+          OptParse2::DONT_ASSIGN
+        end
+      in :raise
+        @block = ->(arg) do
+          ctx = OptParse2::Context.current
+          if ctx.already_parsed_options.key? sw or ctx.deferred_options.key? sw
+            raise OptParse2::ParseError, "encountered repeated option"
+          end
+
+          old_block ? old_block.call(arg) : arg
+        end
+
+      in :count
+        @block = ->(amnt, **nil) do
+          ctx = OptParse2::Context.current
+
+          ctx.deferred_options[sw] ||= {
+            proc: old_block ? proc { |data| old_block.call(data) } : proc { |data| data },
+            data: 0
+          }
+
+          if amnt == true || amnt.nil?
+            ctx.deferred_options[sw][:data] += 1
+          else
+            ctx.deferred_options[sw][:data] = amnt
+          end
+
+          OptParse2::DONT_ASSIGN
+        end
+
+      in :count!
+        @block = ->(amnt, *a, **k, &b) do
+          ctx = OptParse2::Context.current
+
+          ctx.deferred_options[sw] ||= { data: 0 }
+
+          if amnt == true || amnt.nil?
+            ctx.deferred_options[sw][:data] += 1
+          else
+            ctx.deferred_options[sw][:data] = amnt
+          end
+
+          new_amnt = old_block ? old_block.call(ctx.deferred_options[sw][:data], *a, **k, &b) : ctx.deferred_options[sw][:data]
+          ctx.deferred_options[sw][:data] = new_amnt unless OptParse2::DONT_ASSIGN.equal? new_amnt
+
+          new_amnt
+        end
+
+      in :collect | [:collect, _]
+        transform = Array(multiple)[1]
+        @block = ->(arg, **nil) do
+          ctx = OptParse2::Context.current
+          ctx.deferred_options[sw] ||= {
+            proc: proc { |data| old_block ? old_block.call(data) : data },
+            data: []
+          }
+
+          ctx.deferred_options[sw][:data] << (transform ? transform.(arg) : arg)
+          OptParse2::DONT_ASSIGN
+        end
+
+      else
+        raise ArgumentError, "invalid multiple type: #{multiple}", caller(2)
+      end
+    end
+
     # Same as `switch_name`, except it also will set the block to just return the original switch
     # name as a symbol. Useful for group switches which don't actually have blocks:
     #    op.on '--interactive', key: :mode
