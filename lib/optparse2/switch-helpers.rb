@@ -150,7 +150,7 @@ class OptParse2
     # Default values of switches are used when the switch is never passed in.
     # If the `value` that's provided doesn't respond to `.call`, it's converted to a proc.
     # If `bypass` is truthy, then the default value is never passed to the block's proc (if any)
-    def set_default(value, description, bypass)
+    def set_default(value, description, bypass, no_default_description)
       if required?
         raise ArgumentError, 'cannot supply a default value for a required argument'
       end
@@ -165,6 +165,7 @@ class OptParse2
         @default_proc = proc { |_switch_name| value }
       end
 
+      @no_default_description = no_default_description
       @default_description = description
       @default_bypass = bypass
     end
@@ -174,9 +175,10 @@ class OptParse2
     def default? = defined?(@default_proc)
     def default = @default_proc&.call(switch_name)
 
-    def default_description = @default_description || default.inspect
+    def default_description = @default_description || default.to_s
     def desc
       return super unless defined? @default_proc
+      return super if @no_default_description
       x = super
       x << '' if x.empty?
       x[-1] += " [default: #{default_description}]"

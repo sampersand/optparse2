@@ -35,7 +35,7 @@ class OptParse2
     key: @group,
     default: nodefault=true,
     default_bypass: false,
-    default_description: nil,
+    default_description: no_default_description=true,
     required: false,
     multiple: nil
   )
@@ -56,12 +56,12 @@ class OptParse2
 
     sw.set_required true if required
 
-    if nodefault && default_description != nil
+    if nodefault && !no_default_description
       raise ArgumentError, "default: not supplied, but default_description: given"
     elsif nodefault && default_bypass
       raise ArgumentError, "default: not supplied, but default_bypass: given"
     elsif not nodefault
-      sw.set_default(default, default_description, default_bypass)
+      sw.set_default(default, default_description, default_bypass, !no_default_description)
       @defaults << sw
     end
 
@@ -268,6 +268,12 @@ class OptParse2
 
     @rest = { name:, key:, required: required || 0, block: }
   end
+end
+
+__END__
+OptParse2.new do |op|
+  op.on '-f', '--foo=BAR', 'does it', default: 10, default_description: nil
+  puts op.help
 end
 
 __END__
