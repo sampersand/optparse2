@@ -8,6 +8,7 @@ require_relative "optparse2/version"
 require_relative "optparse2/fixes"
 require_relative "optparse2/switch-helpers"
 require_relative "optparse2/context"
+require_relative "optparse2/builder"
 
 class OptParse2
   class << self
@@ -35,7 +36,7 @@ class OptParse2
     key: @group,
     default: nodefault=true,
     default_bypass: false,
-    default_description: no_default_description=true,
+    default_description: :__TODO_DEFAULT__,
     required: false,
     multiple: nil
   )
@@ -56,12 +57,12 @@ class OptParse2
 
     sw.set_required true if required
 
-    if nodefault && !no_default_description
+    if nodefault && default_description != :__TODO_DEFAULT__
       raise ArgumentError, "default: not supplied, but default_description: given"
     elsif nodefault && default_bypass
       raise ArgumentError, "default: not supplied, but default_bypass: given"
     elsif not nodefault
-      sw.set_default(default, default_description, default_bypass, !no_default_description)
+      sw.set_default(default, default_description, default_bypass)
       @defaults << sw
     end
 
@@ -268,6 +269,17 @@ class OptParse2
 
     @rest = { name:, key:, required: required || 0, block: }
   end
+end
+
+__END__
+
+OptParse2.new do |op|
+  op.switch('-f', '--foo=BAR', 'does it')
+    .default { p $x += 1 }
+    .build!
+  op.parse! into: opts={}
+  p opts
+  p $x
 end
 
 __END__

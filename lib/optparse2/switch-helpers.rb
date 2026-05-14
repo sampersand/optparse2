@@ -150,7 +150,7 @@ class OptParse2
     # Default values of switches are used when the switch is never passed in.
     # If the `value` that's provided doesn't respond to `.call`, it's converted to a proc.
     # If `bypass` is truthy, then the default value is never passed to the block's proc (if any)
-    def set_default(value, description, bypass, no_default_description)
+    def set_default(value, description, bypass)
       if required?
         raise ArgumentError, 'cannot supply a default value for a required argument'
       end
@@ -165,7 +165,6 @@ class OptParse2
         @default_proc = proc { |_switch_name| value }
       end
 
-      @no_default_description = no_default_description
       @default_description = description
       @default_bypass = bypass
     end
@@ -173,16 +172,30 @@ class OptParse2
     # Calls the default proc to figure out what the default value is for this switch
     def default_bypass? = @default_bypass
     def default? = defined?(@default_proc)
-    def default = @default_proc&.call(switch_name)
+    def default
+      return unless default?
+      if defined? @__default_value_after_calling_proc__
+        @__default_value_after_calling_proc__
+      else
+        @__default_value_after_calling_proc__ = @default_proc&.call(switch_name)
+      end
+    end
 
-    def default_description = @default_description || default.to_s
     def desc
-      return super unless defined? @default_proc
-      return super if @no_default_description
-      x = super
-      x << '' if x.empty?
-      x[-1] += " [default: #{default_description}]"
-      x
+      super_desc = super
+      return super_desc unless defined? @default_proc
+
+      if !@default_description
+        return super_desc
+      end
+
+      super_desc << '' if super_desc.empty?
+      super_desc[-1] += " [default"
+      if @default_description != true
+        super_desc.last.concat ": #{@default_description == :__TODO_DEFAULT__ ? default : @default_description}"
+      end
+      super_desc.last.concat ']'
+      super_desc
     end
   end
 end
