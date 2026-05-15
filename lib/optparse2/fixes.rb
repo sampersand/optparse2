@@ -11,9 +11,4 @@ class OptParse2
   def define_head(*opts, **, &block) base.append(*(sw = make_switch(opts, block, **))); sw[0] end
   alias def_tail_option define_tail
   def on_tail(...) define_tail(...); self end
-
-  def initialize(*)
-    @defaults = {}
-    super
-  end
 end

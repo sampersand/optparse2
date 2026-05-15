@@ -8,7 +8,6 @@ require_relative "optparse2/version"
 require_relative "optparse2/fixes"
 require_relative "optparse2/switch-helpers"
 require_relative "optparse2/context"
-require_relative "optparse2/builder"
 
 class OptParse2
   class << self
